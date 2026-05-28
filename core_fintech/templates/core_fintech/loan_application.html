@@ -1,0 +1,137 @@
+{% extends "core_fintech/base.html" %}
+{% load static %}
+
+{% block title %}Apply for Loan - SME Bookkeeper{% endblock %}
+
+{% block content %}
+<div class="flex flex-col min-h-screen bg-gray-50">
+
+    <!-- HEADER -->
+    <header class="bg-indigo-600 text-white p-6 shadow-md z-10">
+        <div class="flex items-center gap-4">
+            <a href="{% url 'dashboard' %}"
+                class="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m15 18-6-6 6-6" />
+                </svg>
+            </a>
+            <div>
+                <h1 class="text-xl font-bold">Capital Credit</h1>
+                <p class="text-indigo-200 text-sm mt-0.5">Instant AI Loan Decisions</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="flex-1 p-5 overflow-y-auto no-scrollbar pb-10">
+
+        <!-- Current Score Display -->
+        <div class="bg-white border border-gray-100 rounded-2xl p-5 mb-6 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-gray-500 text-sm font-medium">Your Current Score</p>
+                <p class="text-2xl font-bold text-gray-800">{{ merchant.credit_score|default:"N/A" }} <span
+                        class="text-xs text-gray-400 font-normal">/ 850</span></p>
+            </div>
+            <div class="bg-indigo-50 text-indigo-600 p-3 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20" />
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+            </div>
+        </div>
+
+        {% if not decision %}
+        <!-- APPLICATION FORM -->
+        <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+            <h2 class="text-lg font-bold text-gray-800 mb-2">Request Capital</h2>
+            <p class="text-sm text-gray-500 mb-6">Enter the amount you need. Our AI Chief Credit Officer will evaluate
+                your ledger instantly.</p>
+
+            {% if error %}
+            <div class="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 border border-red-100">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST">
+                {% csrf_token %}
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Loan Amount (₦)</label>
+                    <div class="relative">
+                        <span
+                            class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-base">₦</span>
+                        <input type="number" name="amount" placeholder="0.00" step="1000" min="1000"
+                            class="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-base font-medium"
+                            required>
+                    </div>
+                </div>
+                <button type="submit"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold py-4 rounded-2xl text-base transition-all shadow-md">
+                    Submit to AI
+                </button>
+            </form>
+        </div>
+        {% else %}
+
+        <!-- AI DECISION RESULTS -->
+        {% if decision.status == "APPROVED" %}
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 shadow-sm text-center animate-fade-in">
+            <div
+                class="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-emerald-800 mb-1">Approved!</h2>
+            <p class="text-emerald-600 font-medium mb-4">₦{{ requested_amount|floatformat:2 }}</p>
+            <div
+                class="bg-white p-4 rounded-xl text-sm text-gray-700 text-left border border-emerald-100 leading-relaxed">
+                <span class="font-bold text-gray-900 block mb-1">AI Remarks:</span>
+                {{ decision.reason }}
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 shadow-sm text-center animate-fade-in">
+            <div
+                class="w-16 h-16 bg-rose-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-rose-800 mb-1">Declined</h2>
+            <p class="text-rose-600 font-medium mb-4">₦{{ requested_amount|floatformat:2 }}</p>
+            <div class="bg-white p-4 rounded-xl text-sm text-gray-700 text-left border border-rose-100 leading-relaxed">
+                <span class="font-bold text-gray-900 block mb-1">AI Remarks:</span>
+                {{ decision.reason }}
+            </div>
+        </div>
+        {% endif %}
+
+        <a href="{% url 'loan_application' %}"
+            class="block text-center text-indigo-600 font-semibold mt-6 hover:underline">Make another request</a>
+
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+{% endblock %}
