@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{ title }} - SME Bookkeeper</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core_fintech/css/main.css' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { light: '#e0f2fe', DEFAULT: '#0284c7', dark: '#0369a1' },
+                        money: { DEFAULT: '#059669' },
+                        expense: { DEFAULT: '#e11d48' }
+                    }
+                }
+            }
+        }
+    </script>
+
+</head>
+
+<body class="bg-gray-100 font-sans antialiased min-h-screen flex justify-center">
+    <main class="w-full max-w-md bg-white min-h-screen shadow-xl flex flex-col">
+
+        <!-- HEADER -->
+        {% if entry_type == 'sale' %}
+        <header class="bg-emerald-500 text-white p-6 rounded-b-3xl shadow-md">
+            {% else %}
+            <header class="bg-expense text-white p-6 rounded-b-3xl shadow-md">
+                {% endif %}
+                <div class="flex items-center gap-4">
+                    <!-- Back button -->
+                    <a href="{% url 'dashboard' %}"
+                        class="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                            aria-label="Back">
+                            <path d="m15 18-6-6 6-6" />
+                        </svg>
+                    </a>
+                    <div>
+                        <h1 class="text-xl font-bold">{{ title }}</h1>
+                        <p class="text-sm opacity-80 mt-0.5">{{ subtitle }}</p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- FORM -->
+            <div class="flex-1 p-5 overflow-y-auto no-scrollbar">
+
+                <!-- Validation errors summary -->
+                {% if form.errors %}
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+                    <p class="text-red-700 font-semibold text-sm mb-1">Please fix the following:</p>
+                    {% for field in form %}
+                    {% for error in field.errors %}
+                    <p class="text-red-600 text-sm">• {{ field.label }}: {{ error }}</p>
+                    {% endfor %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <form method="POST" novalidate>
+                    {% csrf_token %}
+
+                    <div class="space-y-5">
+
+                        <!-- Amount -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                                {{ form.amount.label }}
+                            </label>
+                            <div class="relative">
+                                <span
+                                    class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-base">₦</span>
+                                <input type="number" name="amount" id="id_amount"
+                                    value="{{ form.amount.value|default:'' }}" placeholder="0.00" step="0.01" min="0.01"
+                                    class="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-gray-800 focus:outline-none {% if entry_type == 'sale' %}focus:ring-2 focus:ring-emerald-400{% else %}focus:ring-2 focus:ring-rose-400{% endif %} text-base"
+                                    required>
+                            </div>
+                        </div>
+
+                        <!-- Category with datalist suggestions -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                                {{ form.category.label }}
+                            </label>
+                            {{ form.category }}
+                            <!-- Suggested categories differ by entry type -->
+                            {% if entry_type == 'sale' %}
+                            <datalist id="category-suggestions">
+                                <option value="Product Sales">
+                                <option value="Service Revenue">
+                                <option value="Wholesale">
+                                <option value="Retail">
+                                <option value="Online Sales">
+                                <option value="Catering">
+                                <option value="Consultation">
+                            </datalist>
+                            {% else %}
+                            <datalist id="category-suggestions">
+                                <option value="Inventory">
+                                <option value="Rent">
+                                <option value="Utilities">
+                                <option value="Staff Salary">
+                                <option value="Transport">
+                                <option value="Marketing">
+                                <option value="Equipment">
+                                <option value="Groceries">
+                            </datalist>
+                            {% endif %}
+                        </div>
+
+                        <!-- Description -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                                {{ form.description.label }}
+                                <span class="text-gray-400 font-normal">(optional)</span>
+                            </label>
+                            {{ form.description }}
+                        </div>
+
+                        <!-- Date & Time -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                                {{ form.transaction_date.label }}
+                            </label>
+                            {{ form.transaction_date }}
+                        </div>
+
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="mt-8 pb-6">
+                        {% if entry_type == 'sale' %}
+                        <button type="submit"
+                            class="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold py-4 rounded-2xl text-base transition-all shadow-md">
+                            {{ button_label }}
+                        </button>
+                        {% else %}
+                        <button type="submit"
+                            class="w-full bg-expense hover:bg-rose-700 active:scale-95 text-white font-bold py-4 rounded-2xl text-base transition-all shadow-md">
+                            {{ button_label }}
+                        </button>
+                        {% endif %}
+
+                        <a href="{% url 'dashboard' %}"
+                            class="block text-center text-gray-400 text-sm mt-4 hover:text-gray-600">
+                            Cancel
+                        </a>
+                    </div>
+
+                </form>
+            </div>
+
+    </main>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+/* ============================================================
+   SME Bookkeeper — Custom CSS
+   Tailwind handles utilities; this file covers only things
+   Tailwind CDN can't do natively.
+   ============================================================ */
+
+/* Hide scrollbar on scroll containers while keeping scroll behaviour */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Smooth tap highlight removal on mobile buttons/links */
+button,
+a {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent long unbroken strings (e.g. AI advice) from overflowing card */
+.break-words {
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* datetime-local input fix — removes default browser chrome on mobile */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    opacity: 0.5;
+}

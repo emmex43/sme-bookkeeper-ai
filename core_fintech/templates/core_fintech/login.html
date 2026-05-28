@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Login - SME Bookkeeper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { light: '#e0f2fe', DEFAULT: '#0284c7', dark: '#0369a1' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 font-sans antialiased min-h-screen flex justify-center items-start">
+<main class="w-full max-w-md bg-white min-h-screen shadow-xl flex flex-col">
+
+    <!-- Header -->
+    <div class="bg-brand px-6 pt-16 pb-10 rounded-b-3xl">
+        <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                 fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+        </div>
+        <h1 class="text-white text-2xl font-bold">Welcome back</h1>
+        <p class="text-blue-200 text-sm mt-1">Sign in to your SME Bookkeeper account</p>
+    </div>
+
+    <!-- Form -->
+    <div class="flex-1 px-6 py-8">
+
+        <!-- Error messages -->
+        {% if messages %}
+        <div class="mb-5">
+            {% for message in messages %}
+            <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="POST" novalidate>
+            {% csrf_token %}
+            <div class="space-y-4">
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+                    <input type="text" name="username" autofocus
+                           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand text-base"
+                           placeholder="Your username">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+                    <input type="password" name="password"
+                           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand text-base"
+                           placeholder="Your password">
+                </div>
+
+            </div>
+
+            <button type="submit"
+                    class="w-full mt-6 bg-brand hover:bg-brand-dark active:scale-95 text-white font-bold py-4 rounded-2xl text-base transition-all shadow-md">
+                Sign In
+            </button>
+        </form>
+
+        <p class="text-center text-gray-500 text-sm mt-6">
+            Don't have an account?
+            <a href="{% url 'register' %}" class="text-brand font-semibold hover:underline">Create one</a>
+        </p>
+
+    </div>
+</main>
+</body>
+</html>
