@@ -1,33 +1,47 @@
-# .gitignore
+# ==========================================
+# SECRET ENVIRONMENT VARIABLES (CRITICAL)
+# ==========================================
 .env
-*.pyc
-db.sqlite3
-Environments
+.env.local
+.env.*
 
-.env
+# ==========================================
+# PYTHON VIRTUAL ENVIRONMENTS
+# ==========================================
 .venv/
 venv/
 env/
+ENV/
 
-Python
-
-pycache/
+# ==========================================
+# PYTHON CACHE FILES
+# ==========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 *.py[cod]
 *$py.class
 
-Django
-
-*.log
-local_settings.py
+# ==========================================
+# DJANGO SPECIFIC
+# ==========================================
 db.sqlite3
 db.sqlite3-journal
+staticfiles/
+media/
+local_settings.py
 
-OS generated files
-
+# ==========================================
+# OS & IDE GENERATED FILES
+# ==========================================
 .DS_Store
 .DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
+.vscode/
+.idea/
+*.swp
 Thumbs.db
+
+# NOTE: We intentionally are NOT ignoring *.pkl files 
+# because Render needs your credit_scoring_model.pkl to run!
+```
