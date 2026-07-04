@@ -1,0 +1,6 @@
+.env 
+merchant_training_data.csv 
+*.csv 
+__pycache__/ 
+*.pyc 
+db.sqlite3 

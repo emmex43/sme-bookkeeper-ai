@@ -1,91 +1,171 @@
-import os
-import joblib
-import pandas as pd
+"""
+utils.py
+--------
+Credit scoring engine using the trained Gradient Boosting Regressor.
+Predicts a continuous score (300-850) directly from merchant ledger features.
+
+Features (must match train_model.py exactly):
+  1. total_revenue
+  2. total_expenses
+  3. net_profit
+  4. revenue_expense_ratio
+  5. expense_ratio
+  6. credit_debit_ratio
+  7. avg_transaction_value
+  8. round_number_ratio
+"""
+
+import logging
 from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
+import pandas as pd
+
+import joblib
+import numpy as np
+from django.db.models import Sum
 from django.utils import timezone
-from django.db.models import Sum, Count
-from django.conf import settings
-from .models import MerchantProfile, LedgerEntry
+
+logger = logging.getLogger(__name__)
+
+# ── Load model once at import time ───────────────────────────────────────────
+_BASE_DIR      = Path(__file__).resolve().parent
+_MODEL_PATH    = _BASE_DIR / 'credit_scoring_model.pkl'
+_FEATURES_PATH = _BASE_DIR / 'feature_names.pkl'
+
+try:
+    _model         = joblib.load(_MODEL_PATH)
+    _feature_names = joblib.load(_FEATURES_PATH)
+    logger.info("Credit scoring model loaded. Features: %s", _feature_names)
+except FileNotFoundError as e:
+    _model         = None
+    _feature_names = None
+    logger.warning("Model file not found (%s). Using heuristic fallback.", e)
+
+MIN_SCORE = 300
+MAX_SCORE = 850
 
 
-def calculate_credit_score(merchant_id):
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def calculate_credit_score(merchant_id: int) -> int:
     """
-    Calculates the credit score for a merchant based on their last 30 days 
-    of ledger activity, using our trained Random Forest machine learning model.
+    Called by post_save signal on LedgerEntry.
+    Extracts features → runs model → saves score to MerchantProfile.
+    Returns integer score in [300, 850].
     """
+    from .models import LedgerEntry, MerchantProfile
+
     try:
-        merchant = MerchantProfile.objects.get(id=merchant_id)
-    except MerchantProfile.DoesNotExist:
-        return None
+        features = _extract_features(merchant_id, LedgerEntry)
 
-    thirty_days_ago = timezone.now() - timedelta(days=30)
+        if _model is not None:
+            score = _ml_score(features)
+        else:
+            score = _heuristic_score(features)
 
-    # Base query for the last 30 days of entries
-    recent_entries = LedgerEntry.objects.filter(
+        MerchantProfile.objects.filter(pk=merchant_id).update(credit_score=score)
+        logger.debug("Merchant %s → credit score %d", merchant_id, score)
+        return score
+
+    except Exception:
+        logger.exception("calculate_credit_score failed for merchant %s", merchant_id)
+        return MIN_SCORE
+
+
+# ── Feature extraction ────────────────────────────────────────────────────────
+
+def _extract_features(merchant_id: int, LedgerEntry) -> dict:
+    """
+    Queries last 90 days and returns the 8 features the model was trained on.
+    Feature names must exactly match feature_names.pkl.
+    """
+    ninety_days_ago   = timezone.now() - timedelta(days=90)
+    fourteen_days_ago = timezone.now() - timedelta(days=14)
+
+    entries = LedgerEntry.objects.filter(
         merchant_id=merchant_id,
-        transaction_date__gte=thirty_days_ago
+        transaction_date__gte=ninety_days_ago,
     )
 
-    # 1. Aggregate Revenue, Expenses, and Transaction Counts
-    revenue_data = recent_entries.filter(
-        transaction_type=LedgerEntry.TransactionType.CREDIT
-    ).aggregate(total=Sum('amount'), count=Count('id'))
+    credits = entries.filter(transaction_type=LedgerEntry.TransactionType.CREDIT)
+    debits  = entries.filter(transaction_type=LedgerEntry.TransactionType.DEBIT)
 
-    expense_data = recent_entries.filter(
-        transaction_type=LedgerEntry.TransactionType.DEBIT
-    ).aggregate(total=Sum('amount'), count=Count('id'))
+    total_revenue  = float(credits.aggregate(t=Sum('amount'))['t'] or 0)
+    total_expenses = float(debits.aggregate(t=Sum('amount'))['t'] or 0)
+    net_profit     = total_revenue - total_expenses
 
-    total_revenue = float(revenue_data['total'] or 0)
-    total_expenses = float(expense_data['total'] or 0)
-    net_profit = total_revenue - total_expenses
-    transaction_count = (revenue_data['count']
-                         or 0) + (expense_data['count'] or 0)
+    credit_count = credits.count()
+    debit_count  = debits.count()
+    tx_count     = entries.count()
 
-    # 2. Load the trained Scikit-Learn model (.pkl file)
-    # We assume the .pkl file is saved in the root directory (same level as manage.py)
-    model_path = os.path.join(settings.BASE_DIR, 'credit_scoring_model.pkl')
+    revenue_expense_ratio = total_revenue / (total_expenses + 1)
+    expense_ratio         = total_expenses / (total_revenue + 1)
+    credit_debit_ratio    = credit_count / max(debit_count, 1)
 
-    try:
-        model = joblib.load(model_path)
-    except FileNotFoundError:
-        # Fallback score if the model file is missing
-        print(f"⚠️ Warning: Model not found at {model_path}")
-        return 300
+    # Average transaction value across ALL entries
+    all_amounts = list(entries.values_list('amount', flat=True))
+    avg_transaction_value = (
+        sum(float(a) for a in all_amounts) / max(len(all_amounts), 1)
+    )
 
-    # 3. Format the data EXACTLY as the model was trained to see it
-    features = pd.DataFrame([{
-        'Total_Revenue': total_revenue,
-        'Total_Expenses': total_expenses,
-        'Net_Profit': net_profit,
-        'Transaction_Count': transaction_count
-    }])
+    # Round number ratio — fabrication fraud signal
+    round_number_ratio = (
+        sum(1 for a in all_amounts if float(a) % 1000 == 0)
+        / max(len(all_amounts), 1)
+    )
 
-    # 4. Get the AI's prediction (1 = Low Risk/Healthy, 0 = High Risk/Struggling)
-    prediction = model.predict(features)[0]
+    return {
+        'total_revenue':          total_revenue,
+        'total_expenses':         total_expenses,
+        'net_profit':             net_profit,
+        'revenue_expense_ratio':  revenue_expense_ratio,
+        'expense_ratio':          expense_ratio,
+        'credit_debit_ratio':     credit_debit_ratio,
+        'avg_transaction_value':  avg_transaction_value,
+        'round_number_ratio':     round_number_ratio,
+    }
 
-    # --- MVP TEST OVERRIDE ---
-    # If we are testing with massive numbers but low transaction counts,
-    # force the model to recognize the merchant as Healthy so the score isn't capped at 649.
-    if net_profit > 1000000:
-        prediction = 1
-    # -------------------------
 
-    # 5. Convert the binary prediction into a dynamic 300-850 FICO score
-    if prediction == 1:
-        # Healthy: Base score of 650. Add up to 200 bonus points based on profit margin.
-        margin = (net_profit / total_revenue) if total_revenue > 0 else 0
-        bonus = min(200, int(margin * 400))
-        new_score = 650 + max(0, bonus)
-    else:
-        # Struggling: Base score of 300. Add up to 349 bonus points based on total revenue.
-        bonus = min(349, int((total_revenue / 100000) * 100))
-        new_score = 300 + max(0, bonus)
+# ── Scoring ───────────────────────────────────────────────────────────────────
 
-    # Ensure the score strictly stays within standard credit bounds
-    new_score = max(300, min(850, new_score))
+def _ml_score(features: dict) -> int:
+    """
+    Runs the Gradient Boosting Regressor.
+    Uses feature_names.pkl to guarantee correct column order.
+    """
+    X = pd.DataFrame([[features[f] for f in _feature_names]], columns=_feature_names)
+    raw_score = float(_model.predict(X)[0])
 
-    # Save the new score back to the merchant profile
-    merchant.credit_score = new_score
-    merchant.save(update_fields=['credit_score'])
+    # Apply fraud penalty on top of model output
+    raw_score = _apply_fraud_penalty(raw_score, features)
+    return _clamp(int(round(raw_score)))
 
-    return new_score
+
+def _heuristic_score(features: dict) -> int:
+    """Fallback when .pkl files are missing."""
+    ratio = min(features['revenue_expense_ratio'], 5.0)
+    score = MIN_SCORE + int((ratio / 5.0) * (MAX_SCORE - MIN_SCORE))
+    score = _apply_fraud_penalty(score, features)
+    return _clamp(score)
+
+
+def _apply_fraud_penalty(score: float, features: dict) -> float:
+    """
+    Deducts points for patterns suggesting fabricated data.
+
+    Penalties:
+      round_number_ratio > 60%  → up to -80 pts
+        (real data has irregular amounts; all-round = suspicious)
+    """
+    penalty = 0.0
+
+    if features['round_number_ratio'] > 0.60:
+        excess   = features['round_number_ratio'] - 0.60
+        penalty += excess * 200   # max ~80 pts at 100% round
+
+    return score - penalty
+
+
+def _clamp(score: int) -> int:
+    return max(MIN_SCORE, min(MAX_SCORE, score))

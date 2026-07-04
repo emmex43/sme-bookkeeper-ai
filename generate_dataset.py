@@ -1,106 +1,150 @@
-import pandas as pd
+"""
+SME Bookkeeper — Synthetic Training Data Generator
+====================================================
+Generates 500 merchants × 200 entries = 100,000 rows of realistic
+Nigerian SME ledger data with 4 risk tiers and 8 engineered features.
+
+Run:  python generate_dataset.py
+Out:  merchant_training_data.csv
+"""
+
 import random
 from datetime import timedelta
-from faker import Faker
 
-# Initialize Faker for realistic data generation
-fake = Faker('en_NG')  # Using Nigerian locale for authentic context if needed
+import pandas as pd
 
-NUM_MERCHANTS = 50
-TOTAL_ENTRIES = 5000
-ENTRIES_PER_MERCHANT = TOTAL_ENTRIES // NUM_MERCHANTS
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+NUM_MERCHANTS = 500
+ENTRIES_PER_MERCHANT = 200
+LOOKBACK_DAYS = 90
 
-# Realistic Nigerian SME Categories
-CREDIT_CATEGORIES = ['Product Sales', 'Wholesale Order',
-                     'Service Rendered', 'Consultation Fee']
-DEBIT_CATEGORIES = ['Inventory Restocking', 'Transport & Fuel',
-                    'Food & Refreshment', 'Rent', 'Utilities (Power/Data)', 'Marketing']
+# Nigerian SME transaction categories
+CREDIT_CATEGORIES = [
+    'Product Sales', 'Wholesale Order', 'Service Rendered',
+    'Consultation Fee', 'Online Sales', 'Catering', 'Retail',
+]
+DEBIT_CATEGORIES = [
+    'Inventory Restocking', 'Transport & Fuel', 'Rent',
+    'Utilities (Power/Data)', 'Marketing', 'Staff Salary',
+    'Equipment Maintenance', 'Food & Refreshment',
+]
+
+# Risk tier definitions — maps to a final continuous score band
+RISK_TIERS = {
+    'Excellent':   {'weight': 0.20, 'credit_ratio': 0.80, 'rev_range': (80000,  500000), 'exp_range': (5000,   60000),  'score_band': (750, 850)},
+    'Good':        {'weight': 0.30, 'credit_ratio': 0.65, 'rev_range': (30000,  200000), 'exp_range': (10000,  80000),  'score_band': (600, 749)},
+    'Fair':        {'weight': 0.30, 'credit_ratio': 0.50, 'rev_range': (10000,  80000),  'exp_range': (15000,  100000), 'score_band': (450, 599)},
+    'Poor':        {'weight': 0.20, 'credit_ratio': 0.35, 'rev_range': (1000,   40000),  'exp_range': (20000,  150000), 'score_band': (300, 449)},
+}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _assign_tier() -> str:
+    """Randomly assigns a risk tier weighted by realistic market distribution."""
+    tiers = list(RISK_TIERS.keys())
+    weights = [RISK_TIERS[t]['weight'] for t in tiers]
+    return random.choices(tiers, weights=weights, k=1)[0]
+
+
+def _add_fraud_signals(entries: list, tier: str) -> list:
+    """
+    Injects realistic fraud patterns into Poor-tier merchants:
+    - Round-number clustering (fabricated entries)
+    - Entry velocity spikes (backdating before loan application)
+    """
+    if tier != 'Poor':
+        return entries
+
+    # 40% of Poor merchants have fraud signals
+    if random.random() > 0.40:
+        return entries
+
+    end_date = pd.Timestamp.now()
+    spike_date = end_date - timedelta(days=random.randint(1, 7))
+
+    # Add 10-20 backdated round-number credit entries
+    for _ in range(random.randint(10, 20)):
+        entries.append({
+            'Transaction_Date': spike_date - timedelta(minutes=random.randint(1, 30)),
+            'Transaction_Type': 'Credit',
+            'Category': random.choice(CREDIT_CATEGORIES),
+            'Amount_NGN': float(random.choice([50000, 100000, 200000, 500000])),
+            'Is_Backdated_Spike': 1,
+        })
+
+    return entries
 
 
 def generate_dataset():
-    data = []
-
-    # Generate 50 unique Merchant IDs
-    merchant_ids = [
-        f"MERCH_{str(i).zfill(3)}" for i in range(1, NUM_MERCHANTS + 1)]
-
-    # Assign profiles: 35 Healthy, 15 Struggling
-    healthy_merchants = set(random.sample(merchant_ids, 35))
-
-    # We span the data over the last 90 days
     end_date = pd.Timestamp.now()
-    start_date = end_date - timedelta(days=90)
+    start_date = end_date - timedelta(days=LOOKBACK_DAYS)
+    all_rows = []
 
-    print("Generating 5,000 synthetic ledger entries...")
+    print(f"Generating {NUM_MERCHANTS} merchants × {ENTRIES_PER_MERCHANT} entries...")
 
-    for merchant_id in merchant_ids:
-        # Determine behavior based on profile
-        is_healthy = merchant_id in healthy_merchants
+    for i in range(1, NUM_MERCHANTS + 1):
+        merchant_id = f"MERCH_{str(i).zfill(3)}"
+        tier = _assign_tier()
+        config = RISK_TIERS[tier]
+        target_score = random.randint(*config['score_band'])
 
-        # We generate exactly 100 entries per merchant to hit the 5,000 total
+        entries = []
+        credit_count = 0
+        debit_count = 0
+
         for _ in range(ENTRIES_PER_MERCHANT):
-            # Random date within the 90-day window
-            transaction_date = fake.date_time_between(
-                start_date=start_date, end_date=end_date)
+            # Randomise date — not uniformly distributed to mimic real usage
+            days_ago = random.expovariate(1 / 30)  # more recent = more likely
+            days_ago = min(days_ago, LOOKBACK_DAYS - 1)
+            txn_date = end_date - timedelta(days=days_ago,
+                                            hours=random.randint(0, 23),
+                                            minutes=random.randint(0, 59))
 
-            if is_healthy:
-                # Healthy profile: 70% chance of a sale, 30% chance of an expense
-                is_credit = random.random() < 0.7
-                if is_credit:
-                    transaction_type = 'Credit'
-                    category = random.choice(CREDIT_CATEGORIES)
-                    # Consistent, decent sales
-                    amount = round(random.uniform(5000, 150000), 2)
-                else:
-                    transaction_type = 'Debit'
-                    category = random.choice(DEBIT_CATEGORIES)
-                    # Lower controlled expenses
-                    amount = round(random.uniform(500, 30000), 2)
+            is_credit = random.random() < config['credit_ratio']
+
+            if is_credit:
+                credit_count += 1
+                amount = round(random.uniform(*config['rev_range']), 2)
+                category = random.choice(CREDIT_CATEGORIES)
+                txn_type = 'Credit'
             else:
-                # Struggling profile: 40% chance of sale, 60% chance of expense
-                is_credit = random.random() < 0.4
-                if is_credit:
-                    transaction_type = 'Credit'
-                    category = random.choice(CREDIT_CATEGORIES)
-                    # Lower, erratic sales
-                    amount = round(random.uniform(500, 40000), 2)
-                else:
-                    transaction_type = 'Debit'
-                    category = random.choice(DEBIT_CATEGORIES)
-                    # High, heavy expenses
-                    amount = round(random.uniform(10000, 150000), 2)
+                debit_count += 1
+                amount = round(random.uniform(*config['exp_range']), 2)
+                category = random.choice(DEBIT_CATEGORIES)
+                txn_type = 'Debit'
 
-            data.append({
-                'Merchant_ID': merchant_id,
-                'Transaction_Date': transaction_date,
-                'Transaction_Type': transaction_type,
+            entries.append({
+                'Transaction_Date': txn_date,
+                'Transaction_Type': txn_type,
                 'Category': category,
                 'Amount_NGN': amount,
-                # Useful label for ML later!
-                'Risk_Profile_Label': 'Low Risk' if is_healthy else 'High Risk'
+                'Is_Backdated_Spike': 0,
             })
 
-    try:
-        # Create DataFrame
-        df = pd.DataFrame(data)
+        # Inject fraud signals for some poor-tier merchants
+        entries = _add_fraud_signals(entries, tier)
 
-        # Sort values by Merchant and Date to make it look like a real chronological ledger
-        df = df.sort_values(
-            by=['Merchant_ID', 'Transaction_Date']).reset_index(drop=True)
+        for entry in entries:
+            all_rows.append({
+                'Merchant_ID': merchant_id,
+                'Risk_Tier': tier,
+                'Target_Score': target_score,
+                **entry,
+            })
 
-        # Export to CSV
-        output_filename = "merchant_training_data.csv"
-        df.to_csv(output_filename, index=False)
-        print(f"✅ Successfully generated dataset with {len(df)} rows.")
-        print(f"💾 Saved to: {output_filename}")
+    df = pd.DataFrame(all_rows)
+    df = df.sort_values(['Merchant_ID', 'Transaction_Date']).reset_index(drop=True)
+    df.to_csv('merchant_training_data.csv', index=False)
 
-        # Display a quick preview in the console
-        print("\nData Preview:")
-        print(df.head())
-
-    except Exception as e:
-        print(f"❌ Error saving dataset: {str(e)}")
+    print(f"✅ Generated {len(df):,} rows across {NUM_MERCHANTS} merchants.")
+    print(f"   Tier distribution:\n{df.groupby('Merchant_ID')['Risk_Tier'].first().value_counts()}")
+    print(f"💾 Saved → merchant_training_data.csv")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     generate_dataset()

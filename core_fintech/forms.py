@@ -2,6 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from .models import LedgerEntry, MerchantProfile
+from django.utils import timezone
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +101,5 @@ class LedgerEntryForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not self.initial.get('transaction_date'):
-            from django.utils import timezone
-            self.initial['transaction_date'] = timezone.now().strftime(
-                '%Y-%m-%dT%H:%M')
+            self.initial['transaction_date'] = timezone.localtime().strftime('%Y-%m-%dT%H:%M')
         self.fields['description'].required = False

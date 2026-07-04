@@ -28,8 +28,7 @@ def register_view(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-            messages.success(
-                request, f"Welcome to SME Bookkeeper, {user.merchant_profile.business_name}!")
+            messages.success(request, f"Welcome to CreditSyn{user.merchant_profile.business_name}!")
             return redirect('dashboard')
     else:
         form = MerchantRegisterForm()

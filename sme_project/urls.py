@@ -19,6 +19,5 @@ from django.urls import path, include  # <-- Make sure to import 'include'
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # <-- Add this line to link your app's URLs
     path('', include('core_fintech.urls')),
 ]
